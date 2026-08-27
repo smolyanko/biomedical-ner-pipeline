@@ -1,0 +1,62 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Data & artifacts (do not commit large/binary files)
+*.db
+*.npy
+*.npz
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.tsv
+*.csv
+logs/
+experiments/
+figures/
+coverage_report.*
+bronze_assays.*
+embeddings_*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Optuna
+optuna.db
+*.db-journal
