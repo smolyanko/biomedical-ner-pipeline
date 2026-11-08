@@ -207,9 +207,12 @@ def fig6_match(seed_df, out_dir):
     fig, ax = plt.subplots(figsize=(7.2, 4))
     w = 0.8 / len(cols)
     x = np.arange(len(ARCHS))
+    mcol = {"strict": "#5B7C99", "partial": "#D9A441", "exact": "#3E8E7E", "ent_type": "#B5475B"}
+    mlab = {"strict": "Strict", "partial": "Partial", "exact": "Exact", "ent_type": "Entity type"}
     for j, c in enumerate(cols):
+        k = c.replace("test_", "").replace("_f1", "")
         ax.bar(x + (j - (len(cols) - 1) / 2) * w, g[c].values, w,
-               label=c.replace("test_", "").replace("_f1", ""))
+               color=mcol.get(k, "#888888"), label=mlab.get(k, k))
     ax.set_xticks(x)
     ax.set_xticklabels([ARCH_LABEL[a] for a in ARCHS], rotation=12)
     ax.set_ylabel("F1")

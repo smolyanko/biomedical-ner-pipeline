@@ -101,8 +101,12 @@ def cmd_token_length(a):
     pd.DataFrame([st]).to_csv(a.out_dir / "token_length_stats.csv", index=False)
     print(st)
     fig, ax = plt.subplots(figsize=(3.4, 2.6))
-    hi = float(np.percentile(lengths, 99.5))
-    ax.hist(np.clip(lengths, 0, hi), bins=60, color=BLUE, edgecolor="white", lw=0.3)
+    hi = 60.0
+    n_over = int((np.asarray(lengths) > hi).sum())
+    ax.hist(np.clip(lengths, 0, hi), bins=60, range=(0, hi), color=BLUE, edgecolor="white", lw=0.3)
+    ax.set_xlim(0, hi + 1)
+    ax.text(0.98, 0.55, f"{n_over} examples\nlonger than {hi:.0f}\n(max {int(max(lengths))})",
+            transform=ax.transAxes, ha="right", va="top", fontsize=7.5, color=INK if "INK" in globals() else "k")
     ax.axvline(st["median"], color=RASP, lw=1.2)
     ax.text(st["median"], ax.get_ylim()[1] * 0.97, f" median {st['median']:.0f}", color=RASP,
             va="top", fontsize=8)
@@ -226,7 +230,7 @@ def make_cmap(spec):
 DEFAULT_CMAP = "#FFFFFF,#DCE5EC,#9FB3C8,#5B7C99,#3E8E7E,#D9A441,#B5475B"
 
 
-def density_grid(runs, col, nx, ny, ylim, oversample=24):
+def density_grid(runs, col, nx, ny, ylim, oversample=400):
     """Rasterise all trajectories into an (ny, nx) grid; each cell counts how many
     trajectories cross it (the more overlapping runs, the higher the count)."""
     H = np.zeros((ny, nx))
