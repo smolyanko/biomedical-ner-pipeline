@@ -85,6 +85,19 @@ def split_cluster_aware(labels, train_ratio=0.8, val_ratio=0.1):
 
 def real_data(args):
     import umap
+    if args.labels is not None:
+        labels = np.load(args.labels.expanduser()).astype(int)
+        vecs = np.load(args.vecs_cache.expanduser()).astype(np.float32)
+        assert len(labels) == len(vecs), "labels and embeddings differ in length"
+        if args.xy_cache and args.xy_cache.expanduser().exists():
+            xy = np.load(args.xy_cache.expanduser())
+        else:
+            xy = umap.UMAP(n_components=2, n_neighbors=args.nn2d, min_dist=args.md2d, spread=args.spread,
+                           metric="cosine", random_state=42, low_memory=True).fit_transform(vecs)
+            if args.xy_cache:
+                np.save(args.xy_cache.expanduser(), xy)
+        print(f"{len(labels)} points, {labels.max() + 1} clusters, noise {np.mean(labels == -1):.1%} (labels from file)")
+        return xy, labels
     try:
         from sklearn.cluster import HDBSCAN
     except ImportError:
@@ -157,6 +170,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--vecs_cache", type=Path, default=None)
     ap.add_argument("--umap_cache", type=Path, default=None)
+    ap.add_argument("--labels", type=Path, default=None,
+                    help="cluster labels exported by export_cluster_labels.py (recommended)")
     ap.add_argument("--xy_cache", type=Path, default=None, help="cache of the 2-D projection")
     ap.add_argument("--nn2d", type=int, default=12)
     ap.add_argument("--md2d", type=float, default=0.0)

@@ -14,8 +14,7 @@ Usage
 -----
   python3 plot_sm_figures.py corpus_size --stage_sizes 1200 15000 16567
   python3 plot_sm_figures.py token_length --data_path train.json
-  python3 plot_sm_figures.py split_composition --data_path train.json \
-        --vecs_cache embeddings.npy --umap_cache umap50_cache.npy
+  python3 plot_sm_figures.py split_composition --labels cluster_labels.npy
   python3 plot_sm_figures.py learning_curves --logs 'experiments/run1/bert_bilstm_crf/*.log' --final_logs 'experiments/multi_seed/*.log' --arch bert_bilstm_crf
   python3 plot_sm_figures.py per_type_metrics --taxonomy experiments/error_analysis/taxonomy_summary.csv
 """
@@ -128,19 +127,37 @@ def composition(clusters, roles):
     return rows, s
 
 
+def roles_from_labels(labels, train_ratio=0.8, val_ratio=0.1):
+    """Same logic as cluster_split() in train_ner_cluster_aware.py."""
+    import random
+    rng = random.Random(42)
+    ids = sorted(set(labels.tolist()) - {-1})
+    rng.shuffle(ids)
+    n_c = len(ids)
+    n_tr, n_va = max(1, int(n_c * train_ratio)), max(1, int(n_c * val_ratio))
+    if n_c - n_tr - n_va < 1:
+        n_tr -= 1
+    tr, va = set(ids[:n_tr]), set(ids[n_tr:n_tr + n_va])
+    return np.array(["train" if (c == -1 or c in tr) else "val" if c in va else "test" for c in labels])
+
+
 def cmd_split_composition(a):
-    import logging
-    import train_ner_cluster_aware as tnc
-    log = logging.getLogger("split"); log.addHandler(logging.StreamHandler()); log.setLevel(logging.INFO)
-    tr, va, te = tnc.load_and_split(
-        data_path=Path(a.data_path).expanduser(), train_ratio=0.8, val_ratio=0.1, logger=log,
-        vecs_cache=a.vecs_cache, umap_cache=a.umap_cache,
-        min_cluster_size=a.min_cluster_size, min_samples=a.min_samples)
-    cl, ro = [], []
-    for name, part in (("train", tr), ("val", va), ("test", te)):
-        for e in part:
-            c = e["meta"]["cluster"]
-            cl.append(-1 if c == tnc.NOISE_CLUSTER_ID else c); ro.append(name)
+    if a.labels is not None:
+        cl = np.load(a.labels.expanduser()).astype(int)
+        ro = roles_from_labels(cl)
+    else:
+        import logging
+        import train_ner_cluster_aware as tnc
+        log = logging.getLogger("split"); log.addHandler(logging.StreamHandler()); log.setLevel(logging.INFO)
+        tr, va, te = tnc.load_and_split(
+            data_path=Path(a.data_path).expanduser(), train_ratio=0.8, val_ratio=0.1, logger=log,
+            vecs_cache=a.vecs_cache, umap_cache=a.umap_cache,
+            min_cluster_size=a.min_cluster_size, min_samples=a.min_samples)
+        cl, ro = [], []
+        for name, part in (("train", tr), ("val", va), ("test", te)):
+            for e in part:
+                c = e["meta"]["cluster"]
+                cl.append(-1 if c == tnc.NOISE_CLUSTER_ID else c); ro.append(name)
     rows, sizes = composition(cl, ro)
     a.out_dir.mkdir(parents=True, exist_ok=True)
     pd.DataFrame([rows]).to_csv(a.out_dir / "split_composition.csv", index=False)
@@ -326,7 +343,8 @@ def main():
     p.add_argument("--data_path", required=True)
     p.add_argument("--tokenizer", default=None, help="HF tokenizer name; omit to count words")
     p = add("split_composition", cmd_split_composition)
-    p.add_argument("--data_path", required=True)
+    p.add_argument("--data_path", default=None)
+    p.add_argument("--labels", type=Path, default=None, help="labels from export_cluster_labels.py")
     p.add_argument("--vecs_cache", type=Path, default=None)
     p.add_argument("--umap_cache", type=Path, default=None)
     p.add_argument("--min_cluster_size", type=int, default=30)

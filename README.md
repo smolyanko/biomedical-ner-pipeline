@@ -22,6 +22,7 @@ A pipeline for downloading biomedical assays from ChEMBL, performing semantic cl
 | `error_analysis_hdbscan.py` | Span-level error taxonomy (exact, boundary errors, type confusion, missed, spurious) on the cluster-aware test set. |
 | `tau_calibration_plot.py` | Plots the nearest-neighbour similarity distribution used to calibrate the coverage threshold τ. |
 | `plot_all_results.py` | Draws the result figures from the outputs of the training, comparison and ablation scripts. |
+| `export_cluster_labels.py` | Exports the HDBSCAN cluster labels exactly as used by the training pipeline, for consistent cluster figures (`--labels-cache`). |
 | `plot_sm_figures.py` | Supplementary figures: corpus growth, token-length distribution, cluster-size and split composition, learning curves as a density of overlapping runs, per-type strict precision/recall/F1. |
 | `graphical_abstract.py` | Draws the graphical abstract: random vs cluster-aware split in the same 2-D embedding projection. |
 
