@@ -2,18 +2,14 @@
 """
 Ablation study on the HDBSCAN cluster-aware pipeline (train_ner_cluster_aware.py).
 
-Mirrors the thesis's ablation_train.py structure and factor list, but reuses
-the HDBSCAN-based clustering/training pipeline instead of MiniBatchKMeans, so
-the ablations are directly comparable to the main HDBSCAN results (Table 1 /
-Table S5) rather than to the old KMeans-based ablations (Table S8, thesis).
+Reuses the HDBSCAN-based clustering/training pipeline, so the ablations are
+directly comparable to the main HDBSCAN results (Table 1 of the paper).
 
-IMPORTANT: BEST_PARAMS below MUST be filled in with the REAL best
-hyperparameters found by Optuna for bert_crf, bert_bilstm_crf and bert_lora
-on the HDBSCAN split (see experiments/run1/<architecture>/optuna_best.json).
-Only bert_linear's entry below is populated from an actual observed run; the
-other three are placeholders and must not be trusted until replaced.
+BEST_PARAMS below holds the best Optuna hyperparameters of each architecture
+on the HDBSCAN split (cf. <save_dir>/<architecture>/optuna_best.json written
+by train_ner_cluster_aware.py).
 
-Ablation factors (same five groups as the thesis):
+Ablation factors:
   1. Focal loss on/off       — bert_crf, bert_bilstm_crf
   2. BIO vs BIOES scheme     — bert_linear, bert_crf
   3. Equal vs adaptive class weights — bert_linear, bert_crf
@@ -48,7 +44,7 @@ import train_ner_cluster_aware as tnc
 
 
 # =============================================================================
-# BEST_PARAMS — fill in from experiments/run1/<arch>/optuna_best.json
+# BEST_PARAMS — best Optuna trial per architecture on the HDBSCAN split
 # =============================================================================
 
 BEST_PARAMS: Dict[str, Dict] = {
@@ -64,34 +60,57 @@ BEST_PARAMS: Dict[str, Dict] = {
         "patience": 5,
     },
     "bert_crf": {
-        # PLACEHOLDER — replace with real values from
-        # experiments/run1/bert_crf/optuna_best.json before running ablations
-        "batch_size": 4, "lr": 2e-5, "weight_decay": 0.01, "warmup_ratio": 0.1,
-        "dropout": 0.15, "o_weight": 0.2, "label_smoothing": 0.05, "patience": 4,
-        "use_layer_pooling": True, "focal_weight": 0.1, "focal_gamma": 2.0,
-        "n_last_layers": 4, "mlp_hidden": 256,
+        # REAL — observed Optuna best trial for bert_crf on the HDBSCAN split
+        "batch_size": 8,
+        "lr": 3.409383405976127e-05,
+        "weight_decay": 0.00012596673182827531,
+        "warmup_ratio": 0.12832279058912027,
+        "dropout": 0.2955415719957022,
+        "o_weight": 0.058940232248454134,
+        "label_smoothing": 0.019274729133729077,
+        "patience": 4,
+        "use_layer_pooling": True,
+        "focal_weight": 0.16250730601727043,
+        "focal_gamma": 2.8459515439902523,
+        "n_last_layers": 5,
+        "mlp_hidden": 128,
     },
     "bert_bilstm_crf": {
-        # PLACEHOLDER — replace with real values from
-        # experiments/run1/bert_bilstm_crf/optuna_best.json before running ablations
-        "batch_size": 4, "lr": 2e-5, "weight_decay": 0.01, "warmup_ratio": 0.1,
-        "dropout": 0.15, "o_weight": 0.2, "label_smoothing": 0.05, "patience": 4,
-        "lstm_hidden": 256, "lstm_layers": 1, "focal_weight": 0.1,
+        # REAL — observed Optuna best trial for bert_bilstm_crf on the HDBSCAN split
+        "batch_size": 2,
+        "lr": 1.1067508244100025e-05,
+        "weight_decay": 0.0006919311041343299,
+        "warmup_ratio": 0.11532709084053074,
+        "dropout": 0.22263042437056402,
+        "o_weight": 0.16398178352020723,
+        "label_smoothing": 0.02441101043899327,
+        "patience": 4,
+        "lstm_hidden": 256,
+        "lstm_layers": 1,
+        "focal_weight": 0.1995322846968844,
     },
     "bert_lora": {
-        # PLACEHOLDER — replace with real values from
-        # experiments/run1/bert_lora/optuna_best.json before running ablations
-        "batch_size": 4, "lr": 3e-5, "weight_decay": 0.01, "warmup_ratio": 0.1,
-        "dropout": 0.15, "o_weight": 0.2, "label_smoothing": 0.05, "patience": 4,
-        "lora_r": 16, "lora_alpha": 32, "lora_dropout": 0.1, "focal_weight": 0.1,
+        # REAL — observed Optuna best trial for bert_lora on the HDBSCAN split
+        "batch_size": 4,
+        "lr": 2.0002457833230887e-05,
+        "weight_decay": 0.00024755945700032593,
+        "warmup_ratio": 0.1649533625928422,
+        "dropout": 0.2073819906588218,
+        "o_weight": 0.180194909948993,
+        "label_smoothing": 0.13493481254656697,
+        "patience": 5,
+        "lora_r": 4,
+        "lora_alpha": 8,
+        "lora_dropout": 0.08070132063146114,
+        "focal_weight": 0.006883087044953406,
     },
 }
 
-PLACEHOLDER_ARCHS = {"bert_crf", "bert_bilstm_crf", "bert_lora"}
+PLACEHOLDER_ARCHS: set = set()  # all four architectures now use real Optuna best params
 
 
 # =============================================================================
-# Ablation definitions — same five groups as the thesis
+# Ablation definitions
 # =============================================================================
 
 ABLATIONS: List[Dict] = [
@@ -124,12 +143,12 @@ ABLATIONS: List[Dict] = [
 
 
 # =============================================================================
-# equal_class_weights support (thesis's compute_class_weights extended)
+# equal_class_weights support (extension of compute_class_weights)
 # =============================================================================
 
 def _patch_equal_class_weights() -> None:
     """Add an `equal_class_weights` flag to compute_class_weights, matching
-    the thesis's ablation_train.py behaviour: when True, all classes
+    when True, all classes
     (including O) get weight 1.0, disabling adaptive weighting entirely."""
     _orig = tnc.compute_class_weights
 
@@ -205,7 +224,11 @@ def run_one_ablation(
     seed_rows = []
     for i in range(n_seeds):
         seed = 42 + i
-        tnc.seed_everything(seed)
+
+        # train_one_run() calls seed_everything(42) internally, so seeding from
+        # outside has no effect; the function is patched for the duration of the run.
+        _orig_seed = tnc.seed_everything
+        tnc.seed_everything = lambda s=42, _seed=seed: _orig_seed(_seed)
 
         # monkey-patch compute_class_weights call site's kwarg for this run
         _orig_compute = tnc.compute_class_weights
@@ -218,6 +241,7 @@ def run_one_ablation(
                                         backbone_state_dict=backbone)
         finally:
             tnc.compute_class_weights = _orig_compute
+            tnc.seed_everything = _orig_seed
 
         row = {
             "ablation": name, "arch": arch, "seed": seed,

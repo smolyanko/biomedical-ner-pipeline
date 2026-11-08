@@ -60,3 +60,9 @@ Thumbs.db
 # Optuna
 optuna.db
 *.db-journal
+
+# Cluster job scripts and logs are not tracked
+slurm/
+*.sh
+*.out
+*.err
