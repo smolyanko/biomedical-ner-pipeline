@@ -22,6 +22,7 @@ A pipeline for downloading biomedical assays from ChEMBL, performing semantic cl
 | `error_analysis_hdbscan.py` | Span-level error taxonomy (exact, boundary errors, type confusion, missed, spurious) on the cluster-aware test set. |
 | `tau_calibration_plot.py` | Plots the nearest-neighbour similarity distribution used to calibrate the coverage threshold τ. |
 | `plot_all_results.py` | Draws the result figures from the outputs of the training, comparison and ablation scripts. |
+| `plot_sm_figures.py` | Supplementary figures: corpus growth, token-length distribution, cluster-size and split composition, learning curves as a density of overlapping runs, per-type strict precision/recall/F1. |
 | `graphical_abstract.py` | Draws the graphical abstract: random vs cluster-aware split in the same 2-D embedding projection. |
 
 ## NER Architectures
@@ -132,6 +133,9 @@ python plot_all_results.py \
     --seed_runs experiments/multi_seed/seed_runs.csv \
     --ablations experiments/ablations_hdbscan \
     --out_dir figures/results
+
+python plot_sm_figures.py per_type_metrics \
+    --taxonomy experiments/error_analysis/taxonomy_summary.csv
 
 python graphical_abstract.py --vecs_cache embeddings.npy \
     --xy_cache umap2d.npy --out_dir figures

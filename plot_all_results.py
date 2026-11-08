@@ -11,7 +11,6 @@ Figures (PNG 300 dpi + PDF):
   fig1_main_results        Table 1: strict F1 per architecture, 3 seeds (points + mean ± s.d.)
   fig2_params_vs_f1        trainable parameters (log) vs F1 — parameter efficiency of LoRA
   fig3_split_strategies     F1 by split strategy (random -> cluster-aware), leakage
-  fig4_kmeans_vs_hdbscan   cluster-aware: KMeans (earlier experiments) vs HDBSCAN
   fig5_ablations           change in strict F1 relative to the full configuration, per ablation group
   fig6_match_types         strict / partial / exact / ent_type per architecture
 
@@ -37,14 +36,8 @@ import pandas as pd
 ARCHS = ["bert_linear", "bert_crf", "bert_bilstm_crf", "bert_lora"]
 ARCH_LABEL = {"bert_linear": "BERT+Linear", "bert_crf": "BERT+CRF",
               "bert_bilstm_crf": "BERT+BiLSTM+CRF", "bert_lora": "BERT+LoRA+CRF"}
-COLORS = {"bert_linear": "#4C78A8", "bert_crf": "#54A24B",
-          "bert_bilstm_crf": "#E45756", "bert_lora": "#B279A2"}
-
-# Earlier KMeans experiments (K=200, 3 seeds, strict F1) — used for fig4 and fig3 when no own data are given
-THESIS_KMEANS_CLUSTER = {"bert_linear": 0.8514, "bert_crf": 0.8710,
-                         "bert_bilstm_crf": 0.8758, "bert_lora": 0.8754}
-THESIS_KMEANS_RANDOM = {"bert_linear": 0.9156, "bert_crf": 0.8955,
-                        "bert_bilstm_crf": 0.8981, "bert_lora": 0.8781}
+COLORS = {"bert_linear": "#5B7C99", "bert_crf": "#D9A441",
+          "bert_bilstm_crf": "#B5475B", "bert_lora": "#3E8E7E"}
 
 # Table 1 (HDBSCAN, 3 seeds) — fallback if seed_runs.csv is not provided
 TABLE1_FALLBACK = {"bert_linear": (0.8867, 0.0015), "bert_crf": (0.8919, 0.0050),
@@ -92,8 +85,8 @@ def fig1_main(seed_df, out_dir):
     ax.set_xticks(xs)
     ax.set_xticklabels([ARCH_LABEL[a] for a in ARCHS], rotation=12)
     ax.set_ylabel("Strict F1 (test)")
-    ax.set_ylim(0.87, 0.905)
-    ax.set_title("Cluster-aware split (UMAP+HDBSCAN), 3 seeds")
+    lo = min(TABLE1_FALLBACK[a][0] if seed_df is None else seed_df.loc[seed_df['architecture'] == a, STRICT].min() for a in ARCHS)
+    ax.set_ylim(lo - 0.02, lo + 0.045)
     save(fig, out_dir, "fig1_main_results")
 
 
@@ -127,55 +120,24 @@ def fig3_splits(split_df, out_dir):
     if not strategies:
         strategies = list(dict.fromkeys(split_df["strategy"]))
     pivot = split_df.pivot_table(index="strategy", columns="architecture", values=STRICT)
-    fig, ax = plt.subplots(figsize=(8, 4.2))
-    w = 0.2
+    archs = [a for a in ["bert_vanilla"] + ARCHS if a in pivot.columns]
+    names = {"01_random": "Random", "02_stratified_entity": "Stratified\nby entity type",
+             "03_cluster_stratified": "Cluster-stratified\n(leaky control)", "04_cluster_aware": "Cluster-aware"}
+    colors = {**COLORS, "bert_vanilla": "#9A9A9A"}
+    labels = {**ARCH_LABEL, "bert_vanilla": "BERT+Linear (untuned)"}
+    fig, ax = plt.subplots(figsize=(7.2, 3.6))
+    w = 0.8 / len(archs)
     x = np.arange(len(strategies))
-    for j, a in enumerate(ARCHS):
-        if a not in pivot.columns:
-            continue
+    for j, a in enumerate(archs):
         vals = [pivot.loc[s, a] if s in pivot.index else np.nan for s in strategies]
-        ax.bar(x + (j - 1.5) * w, vals, w, color=COLORS[a], label=ARCH_LABEL[a])
+        ax.bar(x + (j - (len(archs) - 1) / 2) * w, vals, w, color=colors[a], label=labels[a])
     ax.set_xticks(x)
-    ax.set_xticklabels([s.split("_", 1)[-1].replace("_", "\n") for s in strategies])
+    ax.set_xticklabels([names.get(s, s) for s in strategies])
     ax.set_ylabel("Strict F1 (test)")
-    lo = np.nanmin(pivot.values) - 0.02
-    ax.set_ylim(max(lo, 0), min(np.nanmax(pivot.values) + 0.015, 1))
-    ax.set_title("Split strategies: leakage inflates the metric")
-    ax.legend(frameon=False, fontsize=8, ncol=2)
+    lo = np.nanmin(pivot[archs].values) - 0.02
+    ax.set_ylim(max(lo, 0), min(np.nanmax(pivot[archs].values) + 0.015, 1))
+    ax.legend(frameon=False, fontsize=7, ncol=3, loc="upper center", bbox_to_anchor=(0.5, 1.18))
     save(fig, out_dir, "fig3_split_strategies")
-
-
-# ───────────────────────── fig4 ─────────────────────────
-def fig4_kmeans_vs_hdb(seed_df, out_dir):
-    hd = {}
-    for a in ARCHS:
-        if seed_df is not None and STRICT in seed_df.columns:
-            v = seed_df.loc[seed_df["architecture"] == a, STRICT]
-            hd[a] = (v.mean(), v.std(ddof=1) if len(v) > 1 else 0.0)
-        else:
-            hd[a] = TABLE1_FALLBACK[a]
-    fig, ax = plt.subplots(figsize=(6.8, 4))
-    x = np.arange(len(ARCHS))
-    w = 0.36
-    ax.bar(x - w / 2, [THESIS_KMEANS_CLUSTER[a] for a in ARCHS], w,
-           color="#9aa5b1", label="KMeans (K=200)")
-    ax.bar(x + w / 2, [hd[a][0] for a in ARCHS], w,
-           yerr=[hd[a][1] for a in ARCHS], capsize=3, color="#2a9d8f",
-           label="UMAP+HDBSCAN")
-    for i, a in enumerate(ARCHS):
-        ax.text(i - w / 2, THESIS_KMEANS_CLUSTER[a] + 0.002,
-                f"{THESIS_KMEANS_CLUSTER[a]:.3f}", ha="center", fontsize=8)
-        ax.text(i + w / 2, hd[a][0] + hd[a][1] + 0.002,
-                f"{hd[a][0]:.3f}", ha="center", fontsize=8)
-    ax.set_xticks(x)
-    ax.set_xticklabels([ARCH_LABEL[a] for a in ARCHS], rotation=12)
-    ax.set_ylabel("Strict F1 (test)")
-    ax.set_ylim(0.83, 0.91)
-    ax.set_title("Cluster-aware split: KMeans vs HDBSCAN")
-    ax.legend(frameon=False)
-    ax.text(0.01, -0.28, "KMeans: earlier experiments (different split/test set, "
-            "direct comparison is limited).", transform=ax.transAxes, fontsize=7, color="gray")
-    save(fig, out_dir, "fig4_kmeans_vs_hdbscan")
 
 
 # ───────────────────────── fig5 ─────────────────────────
@@ -228,7 +190,6 @@ def fig5_ablations(abl, out_dir):
     ax.set_yticks(y)
     ax.set_yticklabels([r[0] for r in rows], fontsize=8)
     ax.set_xlabel("Δ strict F1, pp (full configuration − without component)")
-    ax.set_title("Ablations on the HDBSCAN split")
     save(fig, out_dir, "fig5_ablations")
 
 
@@ -254,7 +215,6 @@ def fig6_match(seed_df, out_dir):
     ax.set_ylabel("F1")
     ax.set_ylim(max(g.min().min() - 0.03, 0), min(g.max().max() + 0.02, 1))
     ax.legend(frameon=False, ncol=len(cols), fontsize=8)
-    ax.set_title("Entity matching criteria (nervaluate)")
     save(fig, out_dir, "fig6_match_types")
 
 
@@ -275,7 +235,6 @@ def main():
     fig1_main(seed_df, args.out_dir)
     fig2_params(seed_df, args.out_dir)
     fig3_splits(split_df, args.out_dir)
-    fig4_kmeans_vs_hdb(seed_df, args.out_dir)
     fig5_ablations(abl, args.out_dir)
     fig6_match(seed_df, args.out_dir)
     print(f"Done: {args.out_dir}")
