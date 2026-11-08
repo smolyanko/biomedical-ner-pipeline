@@ -15,8 +15,8 @@ The random split uses the same 80/10/10 ratios.
 Usage
 -----
   python3 graphical_abstract.py \
-      --vecs_cache embeddings.npy \
-      --umap_cache umap50_cache.npy \
+      --vecs_cache ~/project/embeddings_a03ce33c.npy \
+      --umap_cache ~/project/umap50_cache.npy \
       --out_dir figures --f1_random 0.9196 --f1_cluster 0.8919
 
   python3 graphical_abstract.py --demo        # synthetic points, layout check only
@@ -130,16 +130,16 @@ def mm_axes(fig, x, y, w, h):
 
 def draw_panel(ax, xy, role, labels, mark_noise):
     ax.set_facecolor(PANEL)
-    # draw order: noise < train < val < test (test on top, so leakage/islands are visible)
-    layer = role + 1
-    if mark_noise:
-        layer = np.where(labels == -1, 0, layer)
-    order = np.argsort(layer, kind="stable")
+        # Random draw order, so that overplotting reflects the true 80/10/10 proportions
+    # (noise, if marked, is drawn first, underneath everything else).
+    jitter = np.random.default_rng(0).random(len(role))
+    layer = np.zeros(len(role)) if not mark_noise else np.where(labels == -1, 0.0, 1.0)
+    order = np.lexsort((jitter, layer))
     cols = np.array([TRAIN, VAL, TEST])[role]
     if mark_noise:
         cols = np.where(labels == -1, NOISE, cols)
-    size = np.array([0.5, 1.6, 1.6])[role]
-    alpha = np.array([0.55, 0.95, 0.95])[role]
+    size = np.array([0.8, 1.5, 1.5])[role]
+    alpha = np.array([0.75, 0.95, 0.95])[role]
     if mark_noise:
         alpha = np.where(labels == -1, 0.6, alpha)
     from matplotlib.colors import to_rgba
