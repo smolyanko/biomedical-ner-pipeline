@@ -8,6 +8,7 @@ only state what is plotted.
   token_length     Token-length distribution of the annotated corpus  -> Table S1 numbers too
   split_composition  Cluster-size distribution and train/val/test composition -> Table S2 numbers
   learning_curves  Training loss and dev F1 per epoch as a density of overlapping runs, parsed from logs
+  error_taxonomy   Outcome of gold entities (exact, boundary, type confusion, missed), per type
   per_type_metrics Strict precision / recall / F1 for SUB and TAR (from taxonomy_summary.csv)
 
 Usage
@@ -168,6 +169,10 @@ def cmd_split_composition(a):
     ax1.hist(sizes, bins=np.logspace(np.log10(sizes.min()), np.log10(sizes.max()), 28),
              color=BLUE, edgecolor="white", lw=0.3)
     ax1.set_xscale("log")
+    ax1.set_xticks([30, 50, 100, 200, 500])
+    ax1.get_xaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())
+    ax1.get_xaxis().set_minor_formatter(matplotlib.ticker.NullFormatter())
+    ax1.yaxis.set_major_locator(matplotlib.ticker.MaxNLocator(integer=True))
     ax1.set_xlabel("Cluster size (examples)")
     ax1.set_ylabel("Clusters")
     ax1.text(-0.2, 1.04, "(a)", transform=ax1.transAxes, fontweight="bold")
@@ -179,7 +184,7 @@ def cmd_split_composition(a):
         ax2.barh(0, n, left=left, color=col, edgecolor="white", lw=0.5, label=f"{lab} ({n:,})")
         left += n
     ax2.set_yticks([]); ax2.set_xlabel("Examples"); ax2.grid(axis="y", visible=False)
-    ax2.legend(frameon=False, fontsize=7, loc="upper center", bbox_to_anchor=(0.5, 1.5), ncol=2)
+    ax2.legend(frameon=False, fontsize=7, loc="upper center", bbox_to_anchor=(0.5, 1.32), ncol=2)
     ax2.text(-0.12, 1.04, "(b)", transform=ax2.transAxes, fontweight="bold")
     save(fig, a.out_dir, "figS_split_composition")
 
@@ -233,8 +238,9 @@ def density_grid(runs, col, nx, ny, ylim, oversample=24):
         xs = np.linspace(x.min(), x.max(), oversample * (len(x) - 1) + 1)
         ys = np.interp(xs, x, y)
         xi = np.clip(((xs - 0.5) / xmax * nx).astype(int), 0, nx - 1)
+        inside = (ys >= ylim[0]) & (ys <= ylim[1])           # points outside the axis range are not drawn
         yi = np.clip(((ys - ylim[0]) / (ylim[1] - ylim[0]) * ny).astype(int), 0, ny - 1)
-        cells = set(zip(yi.tolist(), xi.tolist()))   # a run counts once per cell
+        cells = set(zip(yi[inside].tolist(), xi[inside].tolist()))   # a run counts once per cell
         for r, c in cells:
             H[r, c] += 1
     return H, xmax
@@ -258,28 +264,75 @@ def cmd_learning_curves(a):
 
     fig, axes = plt.subplots(1, 2, figsize=(7.0, 2.9), constrained_layout=True)
     for ax, col, lab, tag in ((axes[0], "loss", "Training loss", "(a)"),
-                              (axes[1], "dev_f1", "Validation F1 (seqeval, strict)", "(b)")):
-        allv = np.concatenate([g[col].values for g in runs])
-        ylim = (np.percentile(allv, 0.5), np.percentile(allv, 99.5))
-        pad = 0.04 * (ylim[1] - ylim[0]); ylim = (ylim[0] - pad, ylim[1] + pad)
-        for g in final:
-            ylim = (min(ylim[0], g[col].min()), max(ylim[1], g[col].max()))
-        H, xmax = density_grid(runs, col, a.nx, a.ny, ylim)
+                              (axes[1], "dev_f1", "Validation F1", "(b)")):
+        use_log = col == "loss"
+        tf = (lambda g: g.assign(**{col: np.log10(g[col].clip(lower=1e-6))})) if use_log else (lambda g: g)
+        R, Fn = [tf(g) for g in runs], [tf(g) for g in final]
+        allv = np.concatenate([g[col].values for g in R + Fn])
+        if col == "dev_f1":
+            ylim = (a.f1_min, allv.max())
+        else:
+            ylim = (np.percentile(allv, 0.5), allv.max())
+        pad = 0.03 * (ylim[1] - ylim[0]); ylim = (ylim[0] - pad, ylim[1] + pad)
+        H, xmax = density_grid(R, col, a.nx, a.ny, ylim)
         from scipy.ndimage import gaussian_filter
-        H = gaussian_filter(H, sigma=a.smooth) / len(runs) * 100        # % of runs
+        H = gaussian_filter(H, sigma=a.smooth) / len(R) * 100        # % of runs
         Hn = np.where(H > 0.02 * H.max(), H, np.nan)
         norm = matplotlib.colors.PowerNorm(gamma=0.6, vmin=0, vmax=H.max())
         im = ax.imshow(Hn, origin="lower", aspect="auto", cmap=cmap, norm=norm,
                        extent=[0.5, xmax + 0.5, ylim[0], ylim[1]], interpolation="nearest")
-        for g in final:
+        for g in Fn:
             ax.plot(g["epoch"], g[col], color=INK, lw=0.9, alpha=0.9)
         ax.set_xlim(0.5, xmax + 0.5); ax.set_ylim(*ylim)
+        if use_log:
+            cand = [m * 10.0 ** e for e in range(-4, 3) for m in (1, 2, 5)]
+            vals = [v for v in cand if ylim[0] <= np.log10(v) <= ylim[1]]
+            ax.set_yticks([np.log10(v) for v in vals]); ax.set_yticklabels([f"{v:g}" for v in vals])
         ax.set_xlabel("Epoch"); ax.set_ylabel(lab); ax.grid(False)
         ax.xaxis.set_major_locator(matplotlib.ticker.MaxNLocator(integer=True))
         ax.text(-0.22, 1.04, tag, transform=ax.transAxes, fontweight="bold")
         cb = fig.colorbar(im, ax=ax, pad=0.02, fraction=0.05)
         cb.set_label("Share of runs, %", fontsize=8); cb.ax.tick_params(labelsize=7)
     save(fig, a.out_dir, "figS_learning_curves")
+
+
+# ---------------------------------------------------------- error outcomes ----
+OUTCOMES = [("TP", "Exact match", TEAL), ("boundary", "Boundary error", GOLD),
+            ("type", "Type confusion", RASP), ("missed", "Missed", GREY)]
+
+
+def gold_outcomes(tax: pd.DataFrame) -> pd.DataFrame:
+    g = tax[tax["role"] == "gold"].pivot_table(index="type", columns="kind", values="mean", aggfunc="first").fillna(0)
+    out = pd.DataFrame(index=g.index)
+    out["Exact match"] = g["TP"]
+    out["Boundary error"] = g[[c for c in g.columns if c.startswith("boundary_") and c != "boundary_and_type"]].sum(axis=1)
+    out["Type confusion"] = g[[c for c in ("type_confusion", "boundary_and_type") if c in g.columns]].sum(axis=1)
+    out["Missed"] = g["missed"] if "missed" in g.columns else 0
+    return out
+
+
+def cmd_error_taxonomy(a):
+    o = gold_outcomes(pd.read_csv(a.taxonomy))
+    n = o.sum(axis=1)
+    pct = o.div(n, axis=0) * 100
+    pct.round(2).to_csv(a.out_dir / "gold_outcomes_pct.csv") if a.out_dir.exists() else None
+    fig, ax = plt.subplots(figsize=(6.8, 2.2))
+    types = list(pct.index)[::-1]
+    for r, t in enumerate(types):
+        left = 0
+        for _, name, col in OUTCOMES:
+            v = pct.loc[t, name]
+            ax.barh(r, v, left=left, color=col, edgecolor="white", lw=0.6, height=0.62,
+                    label=name if r == 0 else None)
+            if v >= 3:
+                ax.text(left + v / 2, r, f"{v:.1f}", ha="center", va="center", fontsize=7.5,
+                        color="white" if col in (TEAL, RASP) else INK)
+            left += v
+    ax.set_yticks(range(len(types)))
+    ax.set_yticklabels([f"{t} (n = {int(round(n[t])):,})" for t in types])
+    ax.set_xlim(0, 100); ax.set_xlabel("Gold entities, %"); ax.grid(axis="y", visible=False)
+    ax.legend(frameon=False, fontsize=7, ncol=4, loc="upper center", bbox_to_anchor=(0.5, 1.28))
+    save(fig, a.out_dir, "figS_error_taxonomy")
 
 
 # ---------------------------------------------------- per-type P / R / F1 ----
@@ -358,9 +411,12 @@ def main():
     p.add_argument("--arch", default="bert_bilstm_crf")
     p.add_argument("--cmap", default=DEFAULT_CMAP,
                    help="matplotlib colormap name or comma-separated hex colours, light to dark")
+    p.add_argument("--f1_min", type=float, default=0.80, help="lower limit of the F1 axis")
     p.add_argument("--nx", type=int, default=150)
     p.add_argument("--ny", type=int, default=120)
     p.add_argument("--smooth", type=float, default=1.6, help="gaussian smoothing of the density, in cells")
+    p = add("error_taxonomy", cmd_error_taxonomy)
+    p.add_argument("--taxonomy", type=Path, required=True)
     p = add("per_type_metrics", cmd_per_type_metrics)
     p.add_argument("--taxonomy", type=Path, required=True)
 

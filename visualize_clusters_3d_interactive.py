@@ -22,9 +22,9 @@ def generate_distinct_colors(n: int, seed: int = 42):
     return colors
 
 def load_embeddings(vecs_cache: Path) -> np.ndarray:
-    vecs = np.load(str(vecs_cache)).astype(np.float32)
-    norms = np.linalg.norm(vecs, axis=1, keepdims=True)
-    return vecs / np.maximum(norms, 1e-9)
+    # Vectors are used exactly as cached (the training pipeline does not re-normalise them);
+    # re-normalising changes the UMAP result and therefore the clusters.
+    return np.load(str(vecs_cache)).astype(np.float32)
 
 def run_hdbscan(vecs, umap_components, umap_neighbors, umap_min_dist,
                  min_cluster_size, min_samples, cluster_selection_method, seed=42):

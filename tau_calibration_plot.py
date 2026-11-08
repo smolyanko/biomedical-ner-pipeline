@@ -27,7 +27,7 @@ import matplotlib.pyplot as plt
 def load_embeddings(vecs_cache: Path) -> np.ndarray:
     vecs = np.load(str(vecs_cache)).astype(np.float32)
     norms = np.linalg.norm(vecs, axis=1, keepdims=True)
-    return vecs / np.maximum(norms, 1e-9)
+    return vecs / np.maximum(norms, 1e-9)       # unit length, so dot product = cosine
 
 
 def top1_without_self(vecs: np.ndarray, batch: int = 2048) -> np.ndarray:
@@ -56,74 +56,27 @@ def plot_calibration(
     p25 = float(np.quantile(calib_nn, 0.25))
     p50 = float(np.quantile(calib_nn, 0.50))
     mean = float(np.mean(calib_nn))
+    share_dup = float(np.mean(calib_nn >= 0.99))
 
-    fig, ax = plt.subplots(figsize=(9, 5.5), facecolor="white")
-    ax.set_facecolor("white")
-
-    ax.hist(calib_nn, bins=n_bins, color="#A8D8EA", edgecolor="white",
-             linewidth=0.4, zorder=2)
-
-    ymax = ax.get_ylim()[1]
-
-    # novel_thr (p10)
-    ax.axvline(novel_thr, color="#F7A9A8", linestyle="--", linewidth=2, zorder=3)
-    ax.text(novel_thr, ymax * 0.97, f" novel_thr = p10 = {novel_thr:.4f}",
-            rotation=90, va="top", ha="right", fontsize=9, color="#C0605F")
-
-    # covered_thr (p25) — the working threshold
-    ax.axvline(covered_thr, color="#5B9279", linestyle="-", linewidth=2.2, zorder=4)
-    ax.text(covered_thr, ymax * 0.97, f" covered_thr = p25 = {covered_thr:.4f}",
-            rotation=90, va="top", ha="right", fontsize=9, color="#3C6B54",
-            fontweight="bold")
-
-    # median — for context
-    ax.axvline(p50, color="#999999", linestyle=":", linewidth=1.3, zorder=3)
-    ax.text(p50, ymax * 0.97, f" median = {p50:.4f}",
-            rotation=90, va="top", ha="right", fontsize=8.5, color="#777777")
-
-    # percentile labels below the x axis
-    for q_val, q_label, color in [(p10, "10%", "#C0605F"),
-                                    (p25, "25%", "#3C6B54"),
-                                    (p50, "50%", "#777777")]:
-        ax.annotate(
-            q_label, xy=(q_val, 0), xytext=(q_val, -ymax * 0.06),
-            ha="center", va="top", fontsize=8, color=color,
-            annotation_clip=False,
-        )
-
-    ax.set_xlabel("Cosine similarity to the nearest neighbour within the corpus",
-                   fontsize=10.5, color="#444444")
-    ax.set_ylabel("Number of examples", fontsize=10.5, color="#444444")
-    ax.set_title(
-        "Calibration of threshold τ: nearest-neighbour similarity distribution "
-        f"(n={len(calib_nn):,})",
-        fontsize=12.5, color="#333333", pad=14,
-    )
-
-    ax.grid(True, axis="y", color="#EDEDED", linewidth=0.6, zorder=0)
-    for spine in ["top", "right"]:
-        ax.spines[spine].set_visible(False)
-    for spine in ["left", "bottom"]:
-        ax.spines[spine].set_color("#BBBBBB")
-    ax.tick_params(colors="#888888", labelsize=9)
-
-    stats_text = (
-        f"mean = {mean:.4f}\n"
-        f"median = {p50:.4f}\n"
-        f"p10 = {p10:.4f}\n"
-        f"p25 = {p25:.4f}"
-    )
-    ax.text(0.02, 0.97, stats_text, transform=ax.transAxes,
-            fontsize=8.5, va="top", ha="left", color="#555555",
-            bbox=dict(boxstyle="round,pad=0.4", facecolor="white",
-                      edgecolor="#DDDDDD", linewidth=0.7))
-
+    fig, ax = plt.subplots(figsize=(3.6, 2.8), facecolor="white")
+    ax.hist(calib_nn, bins=n_bins, range=(0.4, 1.0), color="#9FB3C8", edgecolor="white", linewidth=0.3)
+    ax.set_yscale("log")
+    ax.axvline(covered_thr, color="#B5475B", lw=1.6, label=f"\u03c4 = p25 = {covered_thr:.3f}")
+    ax.axvline(novel_thr, color="#D9A441", lw=1.4, ls="--", label=f"p10 = {novel_thr:.3f}")
+    ax.set_xlabel("Cosine similarity to the nearest neighbour")
+    ax.set_ylabel("Examples (log scale)")
+    ax.legend(frameon=False, fontsize=7.5, loc="upper left")
+    ax.text(0.04, 0.50, f"{share_dup:.0%} of examples\nhave a neighbour\nwith similarity \u2265 0.99",
+            transform=ax.transAxes, ha="left", va="top", fontsize=7)
+    ax.grid(True, axis="y", alpha=0.25)
+    ax.spines[["top", "right"]].set_visible(False)
     fig.tight_layout()
-    fig.savefig(out_path, dpi=180, facecolor="white")
+    fig.savefig(out_path, dpi=300, facecolor="white")
+    fig.savefig(out_path.with_suffix(".pdf"), facecolor="white")
     plt.close(fig)
     print(f"[plot] Saved: {out_path}")
-
-    return {"mean": mean, "median": p50, "p10": p10, "p25": p25}
+    print(f"[stat] share of examples with nearest-neighbour similarity >= 0.99: {share_dup:.3f}")
+    return {"mean": mean, "median": p50, "p10": p10, "p25": p25, "share_nn_ge_0.99": share_dup}
 
 
 def main() -> None:

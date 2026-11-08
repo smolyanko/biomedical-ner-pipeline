@@ -27,9 +27,9 @@ def generate_distinct_colors(n: int, seed: int = 42):
     return colors
 
 def load_embeddings(vecs_cache: Path) -> np.ndarray:
-    vecs = np.load(str(vecs_cache)).astype(np.float32)
-    norms = np.linalg.norm(vecs, axis=1, keepdims=True)
-    return vecs / np.maximum(norms, 1e-9)
+    # Vectors are used exactly as cached (the training pipeline does not re-normalise them);
+    # re-normalising changes the UMAP result and therefore the clusters.
+    return np.load(str(vecs_cache)).astype(np.float32)
 
 def run_hdbscan(vecs, umap_components, umap_neighbors, umap_min_dist,
                  min_cluster_size, min_samples, cluster_selection_method, seed=42):
@@ -141,6 +141,13 @@ def main() -> None:
 
     out_path = args.out_dir / "embeddings_3d_all_clusters.png"
     fig.savefig(out_path, dpi=200, facecolor="white")
+    from PIL import Image, ImageChops
+    im = Image.open(out_path).convert("RGB")
+    bbox = ImageChops.difference(im, Image.new("RGB", im.size, (255, 255, 255))).getbbox()
+    if bbox:
+        pad = 20
+        im.crop((max(bbox[0] - pad, 0), max(bbox[1] - pad, 0),
+                 min(bbox[2] + pad, im.width), min(bbox[3] + pad, im.height))).save(out_path)
     plt.close(fig)
     print(f"[plot] Saved: {out_path}")
 

@@ -12,9 +12,9 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 def load_embeddings(vecs_cache: Path) -> np.ndarray:
-    vecs = np.load(str(vecs_cache)).astype(np.float32)
-    norms = np.linalg.norm(vecs, axis=1, keepdims=True)
-    return vecs / np.maximum(norms, 1e-9)
+    # Vectors are used exactly as cached (the training pipeline does not re-normalise them);
+    # re-normalising changes the UMAP result and therefore the clusters.
+    return np.load(str(vecs_cache)).astype(np.float32)
 
 def get_umap_reduction(
     vecs: np.ndarray,
@@ -125,55 +125,44 @@ def run_grid(
 
 def plot_sensitivity(rows: List[dict], out_dir: Path,
                       highlight_mcs: int = 30, highlight_ms: int = 5) -> None:
+    from matplotlib.colors import LinearSegmentedColormap
     min_samples_values = sorted(set(r["min_samples"] for r in rows))
-
-    fig, axes = plt.subplots(1, 2, figsize=(14, 5.5))
-
-    colors = plt.cm.viridis(np.linspace(0.15, 0.85, len(min_samples_values)))
+    fig, axes = plt.subplots(1, 2, figsize=(7.0, 2.9), constrained_layout=True)
+    cmap = LinearSegmentedColormap.from_list("ms", ["#5B7C99", "#3E8E7E", "#D9A441", "#B5475B"])
+    colors = [cmap(v) for v in np.linspace(0, 1, len(min_samples_values))]
 
     for ms, color in zip(min_samples_values, colors):
         subset = sorted([r for r in rows if r["min_samples"] == ms],
                          key=lambda r: r["min_cluster_size"])
         xs = [r["min_cluster_size"] for r in subset]
-
-        noise_pct = [r["noise_rate"] * 100 for r in subset]
-        axes[0].plot(xs, noise_pct, "o-", color=color, label=f"min_samples={ms}")
-
-        n_clust = [r["n_clusters"] for r in subset]
-        axes[1].plot(xs, n_clust, "o-", color=color, label=f"min_samples={ms}")
-
-    axes[0].axhspan(20, 25, color="#DDDDDD", alpha=0.4, zorder=0,
-                     label="20–25% (reference range)")
-    axes[0].axhline(10, color="#E76F51", linestyle=":", linewidth=1,
-                     label="10% (sharp drop threshold)")
+        axes[0].plot(xs, [r["noise_rate"] * 100 for r in subset], "o-", ms=3.5, lw=1.3,
+                     color=color, label=f"min_samples = {ms}")
+        axes[1].plot(xs, [r["n_clusters"] for r in subset], "o-", ms=3.5, lw=1.3, color=color)
 
     current = next((r for r in rows if r["min_cluster_size"] == highlight_mcs
                      and r["min_samples"] == highlight_ms), None)
     if current:
-        axes[0].scatter([highlight_mcs], [current["noise_rate"] * 100],
-                         color="black", s=90, zorder=5, marker="*",
-                         label=f"current choice ({highlight_mcs}, {highlight_ms})")
-        axes[1].scatter([highlight_mcs], [current["n_clusters"]],
-                         color="black", s=90, zorder=5, marker="*",
-                         label=f"current choice ({highlight_mcs}, {highlight_ms})")
+        axes[0].scatter([highlight_mcs], [current["noise_rate"] * 100], s=70, zorder=5,
+                        marker="*", color="#1B2733", label=f"selected ({highlight_mcs}, {highlight_ms})")
+        axes[1].scatter([highlight_mcs], [current["n_clusters"]], s=70, zorder=5,
+                        marker="*", color="#1B2733")
 
-    axes[0].set_xlabel("min_cluster_size")
-    axes[0].set_ylabel("Noise rate, %")
-    axes[0].set_title("HDBSCAN noise rate sensitivity")
-    axes[0].legend(fontsize=8, loc="upper right")
-    axes[0].grid(True, alpha=0.3)
-
-    axes[1].set_xlabel("min_cluster_size")
+    axes[0].set_ylabel("Noise points, %")
     axes[1].set_ylabel("Number of clusters")
-    axes[1].set_title("HDBSCAN cluster count sensitivity")
-    axes[1].legend(fontsize=8, loc="upper right")
-    axes[1].grid(True, alpha=0.3)
+    axes[1].set_yscale("log")
+    for k, ax in enumerate(axes):
+        ax.set_xlabel("min_cluster_size")
+        ax.grid(True, alpha=0.25)
+        ax.spines[["top", "right"]].set_visible(False)
+        ax.text(-0.2, 1.04, "(a)" if k == 0 else "(b)", transform=ax.transAxes, fontweight="bold")
+    h, l = axes[0].get_legend_handles_labels()
+    fig.legend(h, l, fontsize=7, frameon=False, loc="outside upper center", ncol=len(l))
 
-    fig.tight_layout()
-    out_path = out_dir / "hdbscan_sensitivity.png"
-    fig.savefig(out_path, dpi=150)
+    for ext in ("png", "pdf"):
+        fig.savefig(out_dir / f"hdbscan_sensitivity.{ext}", dpi=300)
     plt.close(fig)
-    print(f"[plot] Saved: {out_path}")
+    print(f"[plot] Saved: {out_dir / 'hdbscan_sensitivity.png'}")
+
 
 def print_verdict(rows: List[dict]) -> None:
     noise_rates = [r["noise_rate"] * 100 for r in rows]
